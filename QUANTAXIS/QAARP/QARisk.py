@@ -65,6 +65,7 @@ class QA_Risk():
 
         self.time_gap = QA_util_get_trade_gap(
             self.account.start_date, self.account.end_date)
+        self.init_assets= self.account.init_assets
 
     def __repr__(self):
         return '< QA_RISK ANALYSIS ACCOUNT/PORTFOLIO >'
@@ -121,7 +122,9 @@ class QA_Risk():
             'benchmark_code': self.benchmark_code,
             'beta': self.beta,
             'alpha': self.alpha,
-            'sharpe': self.sharpe
+            'sharpe': self.sharpe,
+            'init_assets': self.init_assets,
+            'last_assets': self.assets.iloc[-1]
         }
 
     @property
@@ -137,7 +140,7 @@ class QA_Risk():
         """
         基准组合的账户资产队列
         """
-        return (self.benchmark_data.open / float(self.benchmark_data.open.iloc[0]) * float(self.account.init_assets))
+        return (self.benchmark_data.open / float(self.benchmark_data.open.iloc[0]) * float(self.init_assets))
 
     @property
     def benchmark_annualize_return(self):
@@ -198,10 +201,7 @@ class QA_Risk():
         self.benchmark_type = market_type
 
     def calc_annualize_return(self, assets, days):
-        return math.pow(float(assets.iloc[-1]) / float(assets.iloc[0]), 250.0 / float(days)) - 1.0
-
-    # def calc_profit(self, assets):
-    #     return (assets.iloc[-1] / assets.iloc[1]) - 1
+        return (float(assets.iloc[-1]) / float(assets.iloc[0]) -1 )/(float(days) /250 )
 
     def calc_profitpctchange(self, assets):
         return self.assets[::-1].pct_change()
@@ -219,10 +219,17 @@ class QA_Risk():
         return alpha
 
     def calc_profit(self, assets):
+        """
+        计算账户收益
+        期末资产/期初资产 -1
+        """
         return (float(assets.iloc[-1]) / float(assets.iloc[0])) - 1
 
     def calc_sharpe(self, annualized_returns, volatility_year, r=0.05):
-        '计算夏普比率'
+        """
+        计算夏普比率
+        r是无风险收益
+        """
         return (annualized_returns - r) / volatility_year
 
     def save(self):

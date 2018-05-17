@@ -31,7 +31,7 @@ from pandas import DataFrame
 
 from QUANTAXIS.QAUtil import (DATABASE, QA_Setting, QA_util_date_stamp,
                               QA_util_date_valid, QA_util_dict_remove_key,
-                              QA_util_log_info,
+                              QA_util_log_info, QA_util_code_tolist,
                               QA_util_sql_mongo_sort_DESCENDING,
                               QA_util_time_stamp, QA_util_to_json_from_pandas,
                               trade_date_sse)
@@ -47,35 +47,39 @@ def QA_fetch_stock_day(code, start, end, format='numpy', frequence='day', collec
     '获取股票日线'
     start = str(start)[0:10]
     end = str(end)[0:10]
+    #code= [code] if isinstance(code,str) else code
+
+    # code checking
+    code = QA_util_code_tolist(code)
 
     if QA_util_date_valid(end) == True:
 
         __data = []
         cursor = collections.find({
-            'code': str(code)[0:6], "date_stamp": {
+            'code': {'$in': code}, "date_stamp": {
                 "$lte": QA_util_date_stamp(end),
                 "$gte": QA_util_date_stamp(start)}})
-        if format in ['json', 'dict']:
-            return [QA_util_dict_remove_key(data, '_id') for data in cursor]
+        #res=[QA_util_dict_remove_key(data, '_id') for data in cursor]
 
-        for item in cursor:
-            __data.append([str(item['code']), float(item['open']), float(item['high']), float(
-                item['low']), float(item['close']), float(item['vol']), item['date']])
-
+        res = pd.DataFrame([item for item in cursor])
+        try:
+            res = res.drop('_id', axis=1).assign(volume=res.vol).query('volume>1').assign(date=pd.to_datetime(
+                res.date)).drop_duplicates((['date', 'code'])).set_index('date', drop=False)
+            res = res.ix[:, ['code', 'open', 'high', 'low',
+                             'close', 'volume', 'amount', 'date']]
+        except:
+            res = None
+        if format in ['P', 'p', 'pandas', 'pd']:
+            return res
+        elif format in ['json', 'dict']:
+            return QA_util_to_json_from_pandas(res)
         # 多种数据格式
-        if format in ['n', 'N', 'numpy']:
-            __data = numpy.asarray(__data)
+        elif format in ['n', 'N', 'numpy']:
+            return numpy.asarray(res)
         elif format in ['list', 'l', 'L']:
-            __data = __data
-        elif format in ['P', 'p', 'pandas', 'pd']:
-
-            __data = DataFrame(__data, columns=[
-                'code', 'open', 'high', 'low', 'close', 'volume', 'date'])
-
-            __data['date'] = pd.to_datetime(__data['date'])
-            __data = __data.set_index('date', drop=False)
-
-        return __data
+            return numpy.asarray(res).tolist()
+        else:
+            return None
     else:
         QA_util_log_info('something wrong with date')
 
@@ -93,39 +97,34 @@ def QA_fetch_stock_min(code, start, end, format='numpy', frequence='1min', colle
     elif frequence in ['60min', '60m']:
         frequence = '60min'
     __data = []
+    # code checking
+    code = QA_util_code_tolist(code)
+
     cursor = collections.find({
-        'code': str(code), "time_stamp": {
+        'code': {'$in': code}, "time_stamp": {
             "$gte": QA_util_time_stamp(start),
             "$lte": QA_util_time_stamp(end)
         }, 'type': frequence
     })
-    if format in ['dict', 'json']:
-        return [data for data in cursor]
-    for item in cursor:
 
-        __data.append([str(item['code']), float(item['open']), float(item['high']), float(
-            item['low']), float(item['close']), float(item['vol']), item['datetime'], item['time_stamp'], item['date']])
-
-    __data = DataFrame(__data, columns=[
-        'code', 'open', 'high', 'low', 'close', 'volume', 'datetime', 'time_stamp', 'date'])
-
-    __data['datetime'] = pd.to_datetime(__data['datetime'])
-    __data = __data.set_index('datetime', drop=False)
-    if format in ['numpy', 'np', 'n']:
-        return numpy.asarray(__data)
+    res = pd.DataFrame([item for item in cursor])
+    try:
+        res = res.drop('_id', axis=1).assign(volume=res.vol).query('volume>1').assign(datetime=pd.to_datetime(
+            res.datetime)).drop_duplicates(['datetime', 'code']).set_index('datetime', drop=False)
+        # return res
+    except:
+        res = None
+    if format in ['P', 'p', 'pandas', 'pd']:
+        return res
+    elif format in ['json', 'dict']:
+        return QA_util_to_json_from_pandas(res)
+    # 多种数据格式
+    elif format in ['n', 'N', 'numpy']:
+        return numpy.asarray(res)
     elif format in ['list', 'l', 'L']:
-        return numpy.asarray(__data).tolist()
-    elif format in ['P', 'p', 'pandas', 'pd']:
-        return __data
-
-
-def QA_fetch_stocklist_min(stock_list, date_range, frequence='1min', collections=DATABASE.stock_min):
-    '获取不复权股票分钟线'
-    __data = []
-    for item in stock_list:
-        __data.append(QA_fetch_stock_min(
-            item, date_range[0], date_range[-1], 'pd', frequence, collections))
-    return __data
+        return numpy.asarray(res).tolist()
+    else:
+        return None
 
 
 def QA_fetch_trade_date():
@@ -165,25 +164,16 @@ def QA_fetch_stock_full(date, format='numpy', collections=DATABASE.stock_day):
         QA_util_log_info('something wrong with date')
 
 
-def QA_fetch_stocklist_day(stock_list, date_range, collections=DATABASE.stock_day):
-    '获取多个股票的日线'
-    __data = []
-    for item in stock_list:
-        __data.append(QA_fetch_stock_day(
-            item, date_range[0], date_range[-1], 'pd', collections))
-    return __data
-
-
 def QA_fetch_index_day(code, start, end, format='numpy', collections=DATABASE.index_day):
     '获取指数日线'
     start = str(start)[0:10]
     end = str(end)[0:10]
-
+    code = QA_util_code_tolist(code)
     if QA_util_date_valid(end) == True:
 
         __data = []
         cursor = collections.find({
-            'code': str(code)[0:6], "date_stamp": {
+            'code': {'$in': code}, "date_stamp": {
                 "$lte": QA_util_date_stamp(end),
                 "$gte": QA_util_date_stamp(start)}})
         if format in ['dict', 'json']:
@@ -210,14 +200,6 @@ def QA_fetch_index_day(code, start, end, format='numpy', collections=DATABASE.in
         QA_util_log_info('something wrong with date')
 
 
-def QA_fetch_indexlist_day(stock_list, date_range, collections=DATABASE.index_day):
-    '获取多个股票的日线'
-    __data = []
-    for item in stock_list:
-        __data.append(QA_fetch_index_day(
-            item, date_range[0], date_range[-1], 'pd', collections))
-    return __data
-
 
 def QA_fetch_index_min(
         code,
@@ -237,9 +219,9 @@ def QA_fetch_index_min(
     elif frequence in ['60min', '60m']:
         frequence = '60min'
     __data = []
-
+    code=QA_util_code_tolist(code)
     cursor = collections.find({
-        'code': str(code), "time_stamp": {
+        'code': {'$in': code}, "time_stamp": {
             "$gte": QA_util_time_stamp(start),
             "$lte": QA_util_time_stamp(end)
         }, 'type': frequence
@@ -278,8 +260,9 @@ def QA_fetch_future_tick():
 
 def QA_fetch_stock_xdxr(code, format='pd', collections=DATABASE.stock_xdxr):
     '获取股票除权信息/数据库'
+    code = QA_util_code_tolist(code)
     data = pd.DataFrame([item for item in collections.find(
-        {'code': code})]).drop(['_id'], axis=1)
+        {'code':  {'$in': code}})]).drop(['_id'], axis=1)
     data['date'] = pd.to_datetime(data['date'])
     return data.set_index('date', drop=False)
 
@@ -295,8 +278,9 @@ def QA_fetch_backtest_history(cookie=None, collections=DATABASE.backtest_history
 
 def QA_fetch_stock_block(code=None, format='pd', collections=DATABASE.stock_block):
     if code is not None:
+        code=QA_util_code_tolist(code)
         data = pd.DataFrame([item for item in collections.find(
-            {'code': code})]).drop(['_id'], axis=1)
+            {'code': {'$in': code}})]).drop(['_id'], axis=1)
         return data.set_index('code', drop=False)
     else:
         data = pd.DataFrame(
@@ -305,9 +289,10 @@ def QA_fetch_stock_block(code=None, format='pd', collections=DATABASE.stock_bloc
 
 
 def QA_fetch_stock_info(code, format='pd', collections=DATABASE.stock_info):
+    code = QA_util_code_tolist(code)
     try:
         data = pd.DataFrame([item for item in collections.find(
-            {'code': code})]).drop(['_id'], axis=1)
+            {'code':  {'$in': code}})]).drop(['_id'], axis=1)
         #data['date'] = pd.to_datetime(data['date'])
         return data.set_index('code', drop=False)
     except Exception as e:

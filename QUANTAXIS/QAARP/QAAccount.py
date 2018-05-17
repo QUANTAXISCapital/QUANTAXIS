@@ -26,7 +26,7 @@
 import pandas as pd
 import datetime
 from QUANTAXIS.QAEngine.QAEvent import QA_Worker
-from QUANTAXIS.QAMarket.QAOrder import QA_Order
+from QUANTAXIS.QAMarket.QAOrder import QA_Order, QA_OrderQueue
 from QUANTAXIS.QASU.save_account import save_account, update_account
 from QUANTAXIS.QAUtil.QAParameter import (ACCOUNT_EVENT, AMOUNT_MODEL,
                                           BROKER_TYPE, ENGINE_EVENT, FREQUENCE,
@@ -68,7 +68,7 @@ class QA_Account(QA_Worker):
 
     def __init__(self, strategy_name=None, user_cookie=None, market_type=MARKET_TYPE.STOCK_CN, frequence=FREQUENCE.DAY,
                  broker=BROKER_TYPE.BACKETEST, portfolio_cookie=None, account_cookie=None,
-                 sell_available={}, init_assets=None, cash=None, history=None,
+                 sell_available={}, init_assets=None, cash=None, history=None, commission_coeff=0.00025, tax_coeff=0.0015,
                  margin_level=False, allow_t0=False, allow_sellopen=False):
         super().__init__()
         self._history_headers = ['datetime', 'code', 'price',
@@ -84,7 +84,10 @@ class QA_Account(QA_Worker):
         self.frequence = frequence
         self.market_data = None
         self._currenttime = None
+        self.commission_coeff = commission_coeff
+        self.tax_coeff = tax_coeff
         # 资产类
+        self.orders = QA_OrderQueue()  # 历史委托单
         self.init_assets = 1000000 if init_assets is None else init_assets
         self.cash = [self.init_assets] if cash is None else cash
         self.cash_available = self.cash[-1]  # 可用资金
@@ -161,6 +164,11 @@ class QA_Account(QA_Worker):
         return pd.DataFrame(data=self.history, columns=self._history_headers).groupby('code').amount.sum().sort_index()
 
     @property
+    def order_table(self):
+        """return order trade list"""
+        return self.orders.trade_list
+
+    @property
     def trade(self):
         '每次交易的pivot表'
         return self.history_table.pivot_table(index=['datetime', 'account_cookie'], columns='code', values='amount').fillna(0).sort_index()
@@ -209,20 +217,30 @@ class QA_Account(QA_Worker):
         update history and cash
         """
         if message['header']['status'] is TRADE_STATUS.SUCCESS:
-            self.time_index.append(str(message['body']['order']['datetime']))
-            self.history.append(
-                [str(message['body']['order']['datetime']), str(message['body']['order']['code']),
-                 float(message['body']['order']['price']), int(message['body']['order']['towards']) *
-                 float(message['body']['order']['amount']), str(
-                     message['header']['order_id']), str(message['header']['trade_id']), str(self.account_cookie),
-                 float(message['body']['fee']['commission']), float(message['body']['fee']['tax'])])
-            self.cash.append(float(self.cash[-1]) - float(message['body']['order']['price']) *
-                             float(message['body']['order']['amount']) * message['body']['order']['towards'] -
-                             float(message['body']['fee']['commission']))
+            trade_amount = float(float(message['body']['order']['price']) *
+                                 float(message['body']['order']['amount']) * message['body']['order']['towards'] -
+                                 float(message['body']['fee']['commission']) -
+                                 float(message['body']['fee']['tax']))
 
+            if self.cash[-1] > trade_amount:
+                self.time_index.append(
+                    str(message['body']['order']['datetime']))
+                self.history.append(
+                    [str(message['body']['order']['datetime']), str(message['body']['order']['code']),
+                     float(message['body']['order']['price']), int(message['body']['order']['towards']) *
+                     float(message['body']['order']['amount']), str(
+                        message['header']['order_id']), str(message['header']['trade_id']), str(self.account_cookie),
+                     float(message['body']['fee']['commission']), float(message['body']['fee']['tax'])])
+                self.cash.append(self.cash[-1]-trade_amount)
+                self.cash_available = self.cash[-1] 
+                 # 资金立刻结转
+            else:
+                print(message)
+                print(self.cash[-1])
+                self.cash_available = self.cash[-1] 
         return self.message
 
-    def send_order(self, code, amount, time, towards, price, order_model, amount_model):
+    def send_order(self, code=None, amount=None, time=None, towards=None, price=None, money=None, order_model=None, amount_model=None):
         """[summary]
 
         Arguments:
@@ -236,45 +254,89 @@ class QA_Account(QA_Worker):
 
         Returns:
             [type] -- [description]
+
+        ATTENTION CHANGELOG 1.0.28
+        修改了Account的send_order方法, 区分按数量下单和按金额下单两种方式
+
+        - AMOUNT_MODEL.BY_PRICE ==> AMOUNT_MODEL.BY_MONEY # 按金额下单
+        - AMOUNT_MODEL.BY_AMOUNT # 按数量下单
+
+        在按金额下单的时候,应给予 money参数
+        在按数量下单的时候,应给予 amount参数
+
+        ```python
+        Account=QA.QA_Account()
+
+        Order_bymoney=Account.send_order(code='000001',
+                                        price=11,
+                                        money=0.3*Account.cash_available,
+                                        time='2018-05-09',
+                                        towards=QA.ORDER_DIRECTION.BUY,
+                                        order_model=QA.ORDER_MODEL.MARKET,
+                                        amount_model=QA.AMOUNT_MODEL.BY_MONEY
+                                        )
+
+        Order_byamount=Account.send_order(code='000001',
+                                        price=11,
+                                        amount=100,
+                                        time='2018-05-09',
+                                        towards=QA.ORDER_DIRECTION.BUY,
+                                        order_model=QA.ORDER_MODEL.MARKET,
+                                        amount_model=QA.AMOUNT_MODEL.BY_AMOUNT
+                                        )
+        ```
         """
+        assert code is not None and time is not None and towards is not None and order_model is not None and amount_model is not None
 
         flag = False
         date = str(time)[0:10] if len(str(time)) == 19 else str(time)
         time = str(time) if len(
             str(time)) == 19 else '{} 09:31:00'.format(str(time)[0:10])
+        # BY_MONEY :: amount --钱 如10000元  因此 by_money里面 需要指定价格,来计算实际的股票数
+        # by_amount :: amount --股数 如10000股
 
         amount = amount if amount_model is AMOUNT_MODEL.BY_AMOUNT else int(
-            amount / price)
-        if self.market_type is MARKET_TYPE.STOCK_CN:
-            amount = int(amount / 100) * 100
+            money / (price*(1+self.commission_coeff)))
 
-        marketvalue = amount * price if amount_model is AMOUNT_MODEL.BY_AMOUNT else amount
+        money = amount * price * \
+            (1+self.commission_coeff) if amount_model is AMOUNT_MODEL.BY_AMOUNT else money
 
-        amount_model = AMOUNT_MODEL.BY_AMOUNT
+        # amount_model = AMOUNT_MODEL.BY_AMOUNT
         if int(towards) > 0:
             # 是买入的情况(包括买入.买开.买平)
-            if self.cash_available >= marketvalue:
-                self.cash_available -= marketvalue
+            if self.cash_available >= money:
+                self.cash_available -= money
+                if self.market_type is MARKET_TYPE.STOCK_CN:# 如果是股票 买入的时候有100股的最小限制
+                    amount = int(amount / 100) * 100
                 flag = True
+            else:
+                print('可用资金不足')
         elif int(towards) < 0:
-            if self.allow_sellopen:
-                flag = True
+
             if self.sell_available.get(code, 0) >= amount:
                 self.sell_available[code] -= amount
                 flag = True
+            elif self.allow_sellopen:
+                if self.cash_available > money:  # 卖空的市值小于现金
+                    flag = True
+            else:
+                print('资金股份不足/不允许卖空开仓')
 
         if flag and amount > 0:
-            return QA_Order(user_cookie=self.user_cookie, strategy=self.strategy_name, frequence=self.frequence,
-                            account_cookie=self.account_cookie, code=code, market_type=self.market_type,
-                            date=date, datetime=time, sending_time=time, callback=self.receive_deal,
-                            amount=amount, price=price, order_model=order_model, towards=towards,
-                            amount_model=amount_model)  # init
+            _order = QA_Order(user_cookie=self.user_cookie, strategy=self.strategy_name, frequence=self.frequence,
+                              account_cookie=self.account_cookie, code=code, market_type=self.market_type,
+                              date=date, datetime=time, sending_time=time, callback=self.receive_deal,
+                              amount=amount, price=price, order_model=order_model, towards=towards, money=money,
+                              amount_model=amount_model, commission_coeff=self.commission_coeff, tax_coeff=self.tax_coeff)  # init
+            self.orders.insert_order(_order)  # order状态存储
+            return _order
         else:
-            return flag
+            print('ERROR : amount=0')
+            return False
 
     def settle(self):
         '同步可用资金/可卖股票'
-        self.cash_available = self.cash[-1]
+
         self.sell_available = self.hold
 
     def on_bar(self, event):
@@ -347,13 +409,27 @@ class QA_Account(QA_Worker):
                 event.callback(event)
 
     def save(self):
+        """
+        存储账户信息
+        """
         save_account(self.message)
 
     def change_cash(self, money):
+        """
+        外部操作|高危|
+        """
         res = self.cash[-1]+money
         if res >= 0:
             # 高危操作
             self.cash[-1] = res
+
+    def get_orders(self, if_today=True):
+        """
+        返回当日委托/历史委托
+        """
+        # self.orders.get_orders.
+        self.orders.queue
+        pass
 
 
 class Account_handler():

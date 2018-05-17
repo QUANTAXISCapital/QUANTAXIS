@@ -55,7 +55,7 @@ class _quotation_base():
     '一个自适应股票/期货/指数的基础类'
 
     def __init__(self, DataFrame, dtype='undefined', if_fq='bfq', marketdata_type='None'):
-        self.data = DataFrame.sort_index()
+        self.data = DataFrame.sort_index(level=1)
         self.data_type = dtype
         self.type = dtype
         self.data_id = QA_util_random_with_topic('DATA', lens=3)
@@ -74,6 +74,12 @@ class _quotation_base():
     def __len__(self):
         return len(self.index)
 
+    # def __getitem__(self,index):
+    #     try:
+    #         return self.data.__getitem__(index)
+    #     except:
+    #         raise ValueError('NONE EXIST INDEX')
+        
     def __iter__(self):
         """
         iter the row one by one
@@ -375,6 +381,16 @@ class _quotation_base():
         '返回结构的长度'
         return len(self.data)
 
+
+    @property
+    @lru_cache()
+    def split_dicts(self):
+        """
+        拆分成dict code:datastruct模式,方便快速选择.
+        加入缓存
+        """
+        return dict(zip(list(self.code), self.splits()))
+
     def get_data(self, time, code):
         'give the time,code tuple and turn the dict'
         try:
@@ -383,7 +399,7 @@ class _quotation_base():
             raise e
 
     def plot(self, code=None):
-        'plot the market_data'
+        """plot the market_data"""
         if code is None:
             path_name = '.' + os.sep + 'QA_' + self.type + \
                 '_codepackage_' + self.if_fq + '.html'
@@ -426,8 +442,17 @@ class _quotation_base():
             webbrowser.open(path_name)
             QA_util_log_info(
                 'The Pic has been saved to your path: {}'.format(path_name))
+    def get(self,name):
+
+        if name in self.data.__dir__(): 
+            return eval('self.{}'.format(name))
+        else:
+            raise ValueError('QADATASTRUCT CANNOT GET THIS PROPERTY')
 
     def query(self, context):
+        """
+        查询data
+        """
         return self.data.query(context)
 
     def new(self, data=None, dtype=None, if_fq=None):
@@ -472,21 +497,39 @@ class _quotation_base():
         return self.new(self.data.head(lens))
 
     def show(self):
+        """
+        打印数据包的内容
+        """
         return QA_util_log_info(self.data)
 
     def to_list(self):
+        """
+        转换DataStruct为list
+        """
         return np.asarray(self.data).tolist()
 
     def to_pd(self):
+        """
+        转换DataStruct为dataframe
+        """
         return self.data
 
     def to_numpy(self):
+        """
+        转换DataStruct为numpy.ndarray
+        """
         return np.asarray(self.data)
 
     def to_json(self):
+        """
+        转换DataStruct为json
+        """
         return QA_util_to_json_from_pandas(self.data)
 
     def to_dict(self, orient='dict'):
+        """
+        转换DataStruct为dict格式
+        """
         return self.data.to_dict(orient)
 
     def to_hdf(self, place, name):
@@ -495,6 +538,9 @@ class _quotation_base():
         return place, name
 
     def is_same(self, DataStruct):
+        """
+        判断是否相同
+        """
         if self.type == DataStruct.type and self.if_fq == DataStruct.if_fq:
             return True
         else:
@@ -508,12 +554,15 @@ class _quotation_base():
             return list(map(lambda x: self.new(
                 self.query('code=="{}"'.format(x)).set_index(['datetime', 'code'], drop=False), self.type, self.if_fq), self.code))
 
+    # def add_func(self, func, *arg, **kwargs):
+    #     return pd.concat(list(map(lambda x: func(
+    #         self.query('code=="{}"'.format(x)), *arg, **kwargs), self.code)))
     def add_func(self, func, *arg, **kwargs):
-        return list(map(lambda x: func(
-            self.query('code=="{}"'.format(x)), *arg, **kwargs), self.code))
+        return pd.concat(list(map(lambda x: func(
+            self.query('code=="{}"'.format(x)), *arg, **kwargs), self.code))).sort_index()
 
     def pivot(self, column_):
-        '增加对于多列的支持'
+        """增加对于多列的支持"""
         if isinstance(column_, str):
             try:
                 return self.data.pivot(index='datetime', columns='code', values=column_)
@@ -524,6 +573,19 @@ class _quotation_base():
                 return self.data.pivot_table(index='datetime', columns='code', values=column_)
             except:
                 return self.data.pivot_table(index='date', columns='code', values=column_)
+
+    def selects(self, code, start, end=None):
+        if self.type[-3:] in ['day']:
+            if end is not None:
+
+                return self.new(self.query('code=="{}"'.format(code)).query('date>="{}" and date<="{}"'.format(start, end)).set_index(['date', 'code'], drop=False), self.type, self.if_fq)
+            else:
+                return self.new(self.query('code=="{}"'.format(code)).query('date>="{}"'.format(start)).set_index(['date', 'code'], drop=False), self.type, self.if_fq)
+        elif self.type[-3:] in ['min']:
+            if end is not None:
+                return self.new(self.query('code=="{}"'.format(code)).data[self.data['datetime'] >= start][self.data['datetime'] <= end].set_index(['datetime', 'code'], drop=False), self.type, self.if_fq)
+            else:
+                return self.new(self.query('code=="{}"'.format(code)).data[self.data['datetime'] >= start].set_index(['datetime', 'code'], drop=False), self.type, self.if_fq)
 
     def select_time(self, start, end=None):
         if self.type[-3:] in ['day']:
@@ -592,7 +654,7 @@ class _quotation_base():
         elif self.type[-3:] in ['min']:
             return self.new(self.data.query('code=="{}"'.format(code)).set_index(['datetime', 'code'], drop=False), self.type, self.if_fq)
 
-    def get_bar(self, code, time, if_trade):
+    def get_bar(self, code, time, if_trade=True):
         if self.type[-3:] in ['day']:
             return self.new(self.query('code=="{}" & date=="{}"'.format(code, str(time)[0:10])).set_index(['date', 'code'], drop=False), self.type, self.if_fq)
 
