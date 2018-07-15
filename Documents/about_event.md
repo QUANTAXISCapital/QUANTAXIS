@@ -27,7 +27,7 @@ QAENGINE分三个部分
 事件的核心可以简单理解为一个带队列的线程(进程/协程),将事件分类,做成生产者消费者模式,通过队列传递任务
 
 
-![](http://osnhakmay.bkt.clouddn.com/QUANTAXISEvent.png)
+![](http://pic.yutiansut.com/QUANTAXISEvent.png)
 
 ## QATASK - 存在于队列中的标准单元
 
@@ -111,8 +111,8 @@ thread = QA.QA_Thread()  # 创建一个QA_Thread
 engine = QA.QA_Engine()  # 创建一个QA_Engine
 engine.start()  # engine 开启
 
-engine.create_kernal('backtest')  # engine创建一个叫 backtest的线程
-engine.start_kernal('backtest')  # engine 启动该线程
+engine.create_kernel('backtest')  # engine创建一个叫 backtest的线程
+engine.start_kernel('backtest')  # engine 启动该线程
 
 # 创建一个类,继承QA_Worker
 

@@ -34,10 +34,17 @@ import requests
 
 from QUANTAXIS.QABacktest.QAAnalysis import QA_backtest_analysis_backtest
 from QUANTAXIS.QAUtil import QA_util_log_info, QA_Setting, QA_util_mongo_initial
-from QUANTAXIS import (QA_SU_save_stock_list, QA_SU_save_stock_min, QA_SU_save_stock_xdxr,
-                       QA_SU_save_stock_block, QA_SU_save_stock_info,
+from QUANTAXIS.QASU.main import (QA_SU_save_stock_list, QA_SU_save_stock_min, QA_SU_save_stock_xdxr,
+                       QA_SU_save_stock_block, QA_SU_save_stock_info,QA_SU_save_stock_info_tushare,
                        QA_SU_save_stock_day, QA_SU_save_index_day, QA_SU_save_index_min,
-                       QA_SU_save_etf_day, QA_SU_save_etf_min)
+                       QA_SU_save_etf_day, QA_SU_save_etf_min, QA_SU_save_option_day, QA_SU_save_financialfiles)
+from QUANTAXIS.QASU.save_binance import QA_SU_save_binance_symbol, QA_SU_save_binance_1hour, \
+                        QA_SU_save_binance_1day, QA_SU_save_binance_1min, QA_SU_save_binance
+
+
+
+# 东方财富爬虫
+from QUANTAXIS.QASU.main import (QA_SU_crawl_eastmoney)
 
 from QUANTAXIS import __version__
 
@@ -61,22 +68,37 @@ class CLI(cmd.Cmd):
         print("syntax: version [message]",)
         print("-- prints a version message")
 
-    #@click.command()
-    #@click.option('--e', default=1, help='Number of greetings.')
+    # @click.command()
+    # @click.option('--e', default=1, help='Number of greetings.')
     def do_examples(self, arg):
         QA_util_log_info('QUANTAXIS example')
         now_path = os.getcwd()
         #project_dir = os.path.dirname(os.path.abspath(__file__))
-        
-        data=requests.get('https://codeload.github.com/yutiansut/QADemo/zip/master')
-        with open("{}{}QADEMO.zip".format(now_path,os.sep), "wb") as code:
+
+        data = requests.get(
+            'https://codeload.github.com/quantaxis/QADemo/zip/master')
+        with open("{}{}QADEMO.zip".format(now_path, os.sep), "wb") as code:
             code.write(data.content)
 
         QA_util_log_info(
-            'Successfully generate QADEMO in : {}, for more examples, please visit https://github.com/yutiansut/qademo'.format(now_path))
+            'Successfully generate QADEMO in : {}, for more examples, please visit https://github.com/quantaxis/qademo'.format(now_path))
 
     def help_examples(self):
         print('make a sample backtest framework')
+
+    def do_download_updatex(self,arg):
+        now_path = os.getcwd()
+        data = requests.get(
+            'https://raw.githubusercontent.com/QUANTAXIS/QUANTAXIS/master/config/update_x.py')
+        with open("{}{}update_x.py".format(now_path, os.sep), "wb") as code:
+            code.write(data.content)
+            
+    def do_download_updateall(self,arg):
+        now_path = os.getcwd()
+        data = requests.get(
+            'https://raw.githubusercontent.com/QUANTAXIS/QUANTAXIS/master/config/update_all.py')
+        with open("{}{}update_all.py".format(now_path, os.sep), "wb") as code:
+            code.write(data.content)
 
     def do_drop_database(self, arg):
         QA_util_mongo_initial()
@@ -113,36 +135,85 @@ class CLI(cmd.Cmd):
         print('syntax: exit')
         print("-- terminates the application")
 
+    def print_crawl_usage(self):
+        print(
+            "Usage: \n\
+            ----------------------------------------------------------------------------------------------------------------------\n\
+            ⌨️命令格式：crawl eastmoney zjlx  6位股票代码 : 抓取 东方财富 资金流向          ❤️鸣谢❤️ www.eastmoney.com 网页提供数据！\n\
+            ⌨️命令格式：crawl jrj       zjlx  6位股票代码 : 抓取 金融界   资金流向          ❤️鸣谢❤️ www.jrj.com.cn    网页提供数据！\n\
+            ⌨️命令格式：crawl 10jqka    funds 6位股票代码 : 抓取 同花顺   资金流向          ❤️鸣谢❤️ www.10jqka.com.cn 网页提供数据！\n\
+            -----------------------------------------------------------------------------------------------------------------------\n\
+            ⌨️命令格式：crawl eastmoney zjlx  all        : 抓取 东方财富 所有股票资金流向   ❤️鸣谢❤️ www.eastmoney.com 网页提供数据！\n\
+            ⌨️命令格式：crawl jrj       zjlx  all        : 抓取 金融界   所有股票资金流向   ❤️鸣谢❤️ www.jrj.com.cn    网页提供数据！\n\
+            ⌨️命令格式：crawl 10jqka    funds all        : 抓取 同花顺   所有股票资金流向   ❤️鸣谢❤️ www.10jqka.com.cn 网页提供数据！\n\
+            -----------------------------------------------------------------------------------------------------------------------\n\
+            @yutiansut\n\
+            @QUANTAXIS\n\
+            请访问 https://book.yutiansut.com/\n\
+            ")
+
+    def do_crawl(self, arg):
+        if arg == '':
+            self.print_crawl_usage()
+        else:
+            arg = arg.split(' ')
+            if len(arg) == 3 and arg[0] == 'eastmoney' and arg[1] == 'zjlx' and arg[2] != 'all':
+                print("  准备抓取东方财富资金流向数据 ")
+                QA_SU_crawl_eastmoney(action=arg[1], stockCode=arg[2])
+            elif len(arg) == 3 and arg[0] == 'jrj' and arg[1] == 'zjlx' and arg[2] != 'all':
+                print("❌crawl jrj zjlx XXXXXX !没有实现")
+            elif len(arg) == 3 and arg[0] == '10jqka' and arg[1] == 'funds' and arg[2] != 'all':
+                print("❌crawl 10jqka funds XXXXXX !没有实现")
+            elif len(arg) == 3 and arg[0] == 'eastmoney' and arg[1] == 'zjlx' and arg[2] == 'all':
+                #print("❌crawl eastmoney zjlx all !没有实现")
+                print("  准备抓取东方财富资金流向数据 ")
+                QA_SU_crawl_eastmoney(action=arg[1], stockCode=arg[2])
+
+            elif len(arg) == 3 and arg[0] == 'jrj' and arg[1] == 'zjlx' and arg[2] == 'all':
+                print("❌crawl jrj zjlx all !没有实现")
+            elif len(arg) == 3 and arg[0] == '10jqka' and arg[1] == 'funds' and arg[2] == 'all':
+                print("❌crawl 10jqka funds all !没有实现")
+            else:
+                print("❌crawl 命令格式不正确！")
+                self.print_crawl_usage()
+
+    def print_save_usage(self):
+        print(
+            "Usage: \n\
+            命令格式：save all  : save stock_day/xdxr/ index_day/ stock_list \n\
+            命令格式：save X|x  : save stock_day/xdxr/min index_day/min etf_day/min stock_list/block \n\
+            命令格式：save day  : save stock_day/xdxr index_day etf_day stock_list \n\
+            命令格式：save min  : save stock_min/xdxr index_min etf_min stock_list \n\
+            ------------------------------------------------------------ \n\
+            命令格式：save stock_day  : 保存日线数据 \n\
+            命令格式：save stock_xdxr : 保存日除权出息数据 \n\
+            命令格式：save stock_min  : 保存分钟线数据 \n\
+            命令格式：save index_day  : 保存指数数据 \n\
+            命令格式：save index_min  : 保存指数线数据 \n\
+            命令格式：save etf_day    : 保存ETF日线数据 \n\
+            命令格式：save etf_min    : 保存ET分钟数据 \n\
+            命令格式：save stock_list : 保存股票列表 \n\
+            命令格式：save stock_block: 保存板块 \n\
+            命令格式：save stock_info : 保存tushare数据接口获取的股票列表 \n\
+            命令格式：save financialfiles : 保存高级财务数据(自1996年开始) \n\
+            命令格式：save option_day : 保存50ETF期权日线数据（不包括已经摘牌的数据） \n\
+            ----------------------------------------------------------\n\
+            if you just want to save daily data just\n\
+                save all+ save stock_block+save stock_info, it about 1G data \n\
+            if you want to save save the fully data including min level \n\
+                save x + save stock_info \n \n\
+            @yutiansut\n\
+            @QUANTAXIS\n\
+            请访问 https://book.yutiansut.com/\n\
+            ")
+
     def do_save(self, arg):
         # 仅仅是为了初始化才在这里插入用户,如果想要注册用户,要到webkit底下注册
         if arg == '':
-            print(
-                "Usage: \n\
-                save all  : save stock_day/xdxr/ index_day/ stock_list \n\
-                save X|x  : save stock_day/xdxr/min index_day/min etf_day/min stock_list/block \n\
-                save day  : save stock_day/xdxr index_day etf_day stock_list \n\
-                save min  : save stock_min/xdxr index_min etf_min stock_list \n\
-                ------------------------------------------------------------ \n\
-                save stock_day  : save stock_day \n\
-                save stock_xdxr : save stock_xdxr \n\
-                save stock_min  : save stock_min \n\
-                save index_day  : save index_day \n\
-                save index_min  : save index_min \n\
-                save etf_day    : save etf_day \n\
-                save etf_min    : save etf_min \n\
-                save stock_list : save stock_list \n\
-                save stock_block: save stock_block \n\
-                save stock_info : save stock_info \n\
-                ----------------------------------------------------------\n\
-                if you just want to save daily data just\n\
-                    save all+ save stock_block+save stock_info, it about 1G data \n\
-                if you want to save save the fully data including min level \n\
-                    save x + save stock_info \n \n\
-                @yutiansut\n\
-                @QUANTAXIS\n\
-                ")
+            self.print_save_usage()
         else:
             arg = arg.split(' ')
+
             if len(arg) == 1 and arg[0] == 'all':
                 if QA_Setting().client.quantaxis.user_list.find({'username': 'admin'}).count() == 0:
                     QA_Setting().client.quantaxis.user_list.insert(
@@ -155,7 +226,7 @@ class CLI(cmd.Cmd):
                 # QA_SU_save_etf_day('tdx')
                 # QA_SU_save_etf_min('tdx')
                 QA_SU_save_stock_list('tdx')
-                # QA_SU_save_stock_block('tdx')
+                QA_SU_save_stock_block('tdx')
                 # QA_SU_save_stock_info('tdx')
             elif len(arg) == 1 and arg[0] == 'day':
                 if QA_Setting().client.quantaxis.user_list.find({'username': 'admin'}).count() == 0:
@@ -197,6 +268,19 @@ class CLI(cmd.Cmd):
                 QA_SU_save_stock_list('tdx')
                 QA_SU_save_stock_block('tdx')
                 # QA_SU_save_stock_info('tdx')
+            elif len(arg) == 1 and arg[0] == "binance":
+                QA_SU_save_binance_symbol()
+                QA_SU_save_binance_1day()
+                QA_SU_save_binance_1hour()
+                QA_SU_save_binance_1day()
+                QA_SU_save_binance_1min()
+            elif len(arg) == 2 and arg[0] == "binance":
+                frequency = arg[1]
+                QA_SU_save_binance(frequency)
+            elif len(arg) == 1 and arg[0] == "huobi":
+                pass
+            elif len(arg) == 1 and arg[0] == "financialfiles":
+                QA_SU_save_financialfiles()
             else:
                 for i in arg:
                     if i == 'insert_user':
@@ -204,7 +288,23 @@ class CLI(cmd.Cmd):
                             QA_Setting().client.quantaxis.user_list.insert(
                                 {'username': 'admin', 'password': 'admin'})
                     else:
-                        eval("QA_SU_save_%s('tdx')" % (i))
+                        '''
+                        save stock_day  : save stock_day 
+                        save stock_xdxr : save stock_xdxr 
+                        save stock_min  : save stock_min 
+                        save index_day  : save index_day 
+                        save index_min  : save index_min 
+                        save etf_day    : save etf_day 
+                        save etf_min    : save etf_min 
+                        save stock_list : save stock_list
+                        save stock_block: save stock_block
+                        save stock_info : save stock_info
+                        '''
+                        try:
+                            eval("QA_SU_save_%s('tdx')" % (i))
+                        except:
+                            print("❌命令格式不正确！")
+                            self.print_save_usage()
 
     def help_save(self):
         QA_util_log_info('Save all the stock data from pytdx')
@@ -226,7 +326,7 @@ class CLI(cmd.Cmd):
         QA_util_log_info("version")
         QA_util_log_info("quit")
         QA_util_log_info("exit")
-        QA_util_log_info('MORE EXAMPLE on https://github.com/yutiansut/QADemo')
+        QA_util_log_info('MORE EXAMPLE on https://github.com/QUANTAXIS/QADemo')
 
     def help(self):
         QA_util_log_info('fn+methods name')

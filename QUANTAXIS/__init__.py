@@ -32,7 +32,7 @@ by yutiansut
 2017/4/8
 """
 
-__version__ = '1.0.32'
+__version__ = '1.0.66'
 __author__ = 'yutiansut'
 logo = ' \n \
 ```````````````````````````````````````````````````````````````````````````````````````````````````````````````````````` \n \
@@ -47,9 +47,9 @@ logo = ' \n \
  ###```````##```##````````##```##```````````##```##```````##`##```````##````##`````````##```##```##``````##```##`````##` \n \
  `##``````###````##``````###``##`````````````##``##````````####```````##```##``````````##``###````##`````##````##`````## \n \
  ``#########``````########```##``````````````###`##``````````##```````##``##````````````##`##``````##````##`````###``### \n \
- ````````#####`````````````````````````````````````````````````````````````````````````````````````````````````````##`` \n \
+ ````````#####`````````````````````````````````````````````````````````````````````````````````````````````````````##``  \n \
  ``````````````````````````````````````````````````````````````````````````````````````````````````````````````````````` \n \
- ``````````````````````````Copyright``yutiansut``2017``````QUANTITATIVE FINANCIAL FRAMEWORK````````````````````````````` \n \
+ ``````````````````````````Copyright``yutiansut``2018``````QUANTITATIVE FINANCIAL FRAMEWORK````````````````````````````` \n \
  ``````````````````````````````````````````````````````````````````````````````````````````````````````````````````````` \n \
 ```````````````````````````````````````````````````````````````````````````````````````````````````````````````````````` \n \
 ```````````````````````````````````````````````````````````````````````````````````````````````````````````````````````` \n '
@@ -60,8 +60,17 @@ from QUANTAXIS.QAFetch import (QA_fetch_get_stock_day, QA_fetch_get_trade_date, 
                                QA_fetch_get_stock_indicator, QA_fetch_get_stock_realtime, QA_fetch_get_stock_transaction,
                                QA_fetch_get_index_day, QA_fetch_get_index_min, QA_fetch_get_stock_list, QA_fetch_get_stock_info,
                                QA_fetch_get_stock_block, QA_fetch_get_stock_transaction_realtime, QA_fetch_get_security_bars,
-                               QA_fetch_get_future_day, QA_fetch_get_future_min, QA_fetch_get_future_list)
-from QUANTAXIS.QAFetch.QAQuery import (QA_fetch_trade_date, QA_fetch_account,
+                               QA_fetch_get_future_day, QA_fetch_get_future_min, QA_fetch_get_future_list, QA_fetch_get_future_transaction,
+                               QA_fetch_get_future_transaction_realtime, QA_fetch_get_future_realtime,
+                               QA_fetch_get_hkfund_list, QA_fetch_get_hkfund_day, QA_fetch_get_hkfund_min,
+                               QA_fetch_get_hkindex_list, QA_fetch_get_hkindex_day,QA_fetch_get_hkindex_min,
+                               QA_fetch_get_hkstock_list, QA_fetch_get_hkstock_day, QA_fetch_get_hkstock_min,
+                               QA_fetch_get_usstock_list, QA_fetch_get_usstock_day, QA_fetch_get_usstock_min,
+                               QA_fetch_get_option_list, QA_fetch_get_option_day, QA_fetch_get_option_min,
+                               QA_fetch_get_macroindex_list, QA_fetch_get_macroindex_day, QA_fetch_get_macroindex_min,
+                               QA_fetch_get_exchangerate_list, QA_fetch_get_exchangerate_day, QA_fetch_get_exchangerate_min,
+                               QA_fetch_get_globalfuture_list, QA_fetch_get_globalfuture_day, QA_fetch_get_globalfuture_min)
+from QUANTAXIS.QAFetch.QAQuery import (QA_fetch_trade_date, QA_fetch_account, QA_fetch_financial_report,
                                        QA_fetch_stock_day, QA_fetch_stock_min,
                                        QA_fetch_index_day, QA_fetch_index_min,
                                        QA_fetch_future_min, QA_fetch_future_day,
@@ -73,15 +82,15 @@ from QUANTAXIS.QAFetch.QACrawler import QA_fetch_get_sh_margin, QA_fetch_get_sz_
 from QUANTAXIS.QAFetch.QAQuery_Advance import *
 
 # save
-from QUANTAXIS.QASU.main import (QA_SU_save_stock_list, QA_SU_save_stock_day, QA_SU_save_index_day, QA_SU_save_index_min,
+from QUANTAXIS.QASU.main import (QA_SU_save_stock_list, QA_SU_save_stock_day, QA_SU_save_index_day, QA_SU_save_index_min, QA_SU_save_stock_info_tushare,
                                  QA_SU_save_stock_min, QA_SU_save_stock_xdxr, QA_SU_save_stock_info, QA_SU_save_stock_min_5,
-                                 QA_SU_save_stock_block, QA_SU_save_etf_day, QA_SU_save_etf_min)
+                                 QA_SU_save_stock_block, QA_SU_save_etf_day, QA_SU_save_etf_min, QA_SU_save_financialfiles)
 
-from QUANTAXIS.QASU.save_backtest import (
-    QA_SU_save_account_message, QA_SU_save_backtest_message, QA_SU_save_account_to_csv)
+# from QUANTAXIS.QASU.save_backtest import (
+#     QA_SU_save_account_message, QA_SU_save_backtest_message, QA_SU_save_account_to_csv)
 
 from QUANTAXIS.QASU.user import (QA_user_sign_in, QA_user_sign_up)
-from QUANTAXIS.QASU.save_local import make_dir, setting_path, cache_path, qa_path
+
 # event driver
 
 # market
@@ -109,11 +118,17 @@ from QUANTAXIS.QAEngine import QA_Thread, QA_Event, QA_Worker, QA_Task, QA_Engin
 from QUANTAXIS.QAData import (QA_data_tick_resample, QA_data_get_hfq, QA_data_get_qfq, QA_data_make_qfq, QA_data_stock_to_fq,
                               QA_data_make_hfq, QA_DataStruct_Stock_day, QA_DataStruct_Stock_min,
                               QA_DataStruct_Future_day, QA_DataStruct_Future_min,
-                              QA_DataStruct_Index_day, QA_DataStruct_Index_min,
-                              QA_DataStruct_Stock_transaction, QA_DataStruct_Stock_block)
+                              QA_DataStruct_Index_day, QA_DataStruct_Index_min, QA_DataStruct_Indicators,
+                              QA_DataStruct_Stock_transaction, QA_DataStruct_Stock_block, QA_DataStruct_Series,
+                              from_tushare, QDS_StockMinWarpper, QDS_StockDayWarpper, QDS_IndexDayWarpper, QDS_IndexMinWarpper)
 from QUANTAXIS.QAData.dsmethods import *
 # Analysis
 from QUANTAXIS.QAAnalysis import *
+
+# Setting
+
+from QUANTAXIS.QASetting.QALocalize import  qa_path, setting_path, cache_path, download_path, log_path
+
 
 # Util
 
@@ -143,7 +158,8 @@ from QUANTAXIS.QAUtil import (QA_util_date_stamp, QA_util_time_stamp, QA_util_ms
 
 from QUANTAXIS.QAIndicator import *
 #from QUANTAXIS.QAFetch.QATdx_adv import bat
-#from QUANTAXIS.QAWeb import QA_Web
+from QUANTAXIS.QAWeb import SigninHandler, SignupHandler, SimulateSocketHandler, StockdayHandler, StockminHandler, RealtimeSocketHandler, QABaseHandler, QAWebSocketHandler
+from QUANTAXIS.QAWeb.QA_Web import main
 # CMD and Cli
 import QUANTAXIS.QACmd
 from QUANTAXIS.QACmd import QA_cmd
@@ -157,7 +173,6 @@ if sys.version_info.major != 3 or sys.version_info.minor not in [4, 5, 6]:
     print('wrong version, should be 3.4/3.5/3.6 version')
     sys.exit()
 
-make_dir()
 
 QA_util_log_info('Welcome to QUANTAXIS, the Version is {}'.format(__version__))
 

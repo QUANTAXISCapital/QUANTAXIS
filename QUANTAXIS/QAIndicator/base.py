@@ -71,7 +71,7 @@ def SMA(Series, N, M=1):
         ret.append(Y)
         preY = Y
         i += 1
-    return pd.Series(ret,index=Series.tail(len(ret)).index)
+    return pd.Series(ret, index=Series.tail(len(ret)).index)
 
 
 def DIFF(Series, N=1):
@@ -104,17 +104,27 @@ def MIN(A, B):
     return var
 
 
-def CROSS(A, B):
+def SINGLE_CROSS(A, B):
     if A.iloc[-2] < B.iloc[-2] and A.iloc[-1] > B.iloc[-1]:
         return True
     else:
         return False
 
 
-def COUNT(COND, N):
-    var = np.where(COND, 1, 0)
-    return var[-N:].sum()
+def CROSS(A, B):
+    var = np.where(A<B, 1, 0)
+    return (pd.Series(var, index=A.index).diff()<0).apply(int)
 
+
+def COUNT(COND, N):
+    """
+    2018/05/23 修改
+
+    参考https://github.com/QUANTAXIS/QUANTAXIS/issues/429
+
+    现在返回的是series
+    """
+    return pd.Series(np.where(COND,1,0),index=COND.index).rolling(N).sum()
 
 def IF(COND, V1, V2):
     var = np.where(COND, V1, V2)
@@ -135,9 +145,9 @@ def LAST(COND, N1, N2):
         N1 {[type]} -- [description]
         N2 {[type]} -- [description]
     """
-    N2=1 if N2==0 else N2
-    assert N2>0
-    assert N1>N2
+    N2 = 1 if N2 == 0 else N2
+    assert N2 > 0
+    assert N1 > N2
     return COND.iloc[-N1:-N2].all()
 
 
@@ -146,8 +156,13 @@ def STD(Series, N):
 
 
 def AVEDEV(Series, N):
-    '平均绝对偏差 mean absolute deviation'
-    return pd.Series(Series).tail(N).mad()
+    """
+    平均绝对偏差 mean absolute deviation
+    修正: 2018-05-25 
+
+    之前用mad的计算模式依然返回的是单值
+    """
+    return Series.rolling(N).apply(lambda x: (np.abs(x - x.mean())).mean(), raw=True)
 
 
 def MACD(Series, FAST, SLOW, MID):

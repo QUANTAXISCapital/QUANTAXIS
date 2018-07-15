@@ -25,7 +25,7 @@
 yutiansut
 util tool
 """
-
+# path
 
 # bar
 from QUANTAXIS.QAUtil.QABar import (QA_util_make_hour_index,
@@ -78,8 +78,9 @@ from QUANTAXIS.QAUtil.QAParameter import (MARKET_TYPE, ORDER_STATUS, TRADE_STATU
 # RANDOM class
 from QUANTAXIS.QAUtil.QARandom import QA_util_random_with_topic
 # QUANTAXIS Setting
-from QUANTAXIS.QAUtil.QASetting import (QA_Setting, DATABASE, future_ip_list,
-                                        info_ip_list, stock_ip_list)
+
+from QUANTAXIS.QAUtil.QASetting import (QA_Setting, DATABASE, future_ip_list, QASETTING,
+                                        info_ip_list, stock_ip_list, exclude_from_stock_ip_list)
 # sql
 from QUANTAXIS.QAUtil.QASql import (QA_util_sql_async_mongo_setting,
                                     QA_util_sql_mongo_setting,
@@ -91,6 +92,7 @@ from QUANTAXIS.QAUtil.QATransform import (QA_util_to_json_from_pandas,
                                           QA_util_to_list_from_pandas,
                                           QA_util_to_pandas_from_json,
                                           QA_util_to_pandas_from_list)
+
 # 网络相关
-from QUANTAXIS.QAUtil.QAWeb import QA_util_web_ping
+from QUANTAXIS.QAUtil.QAWebutil import QA_util_web_ping
 from QUANTAXIS.QAUtil.QAMail import QA_util_send_mail

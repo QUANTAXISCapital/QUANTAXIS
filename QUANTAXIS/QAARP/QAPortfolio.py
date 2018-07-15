@@ -23,7 +23,9 @@
 # SOFTWARE.
 
 from functools import lru_cache
+
 import pandas as pd
+
 from QUANTAXIS.QAARP.QAAccount import QA_Account
 from QUANTAXIS.QAUtil import (DATABASE, QA_util_log_info,
                               QA_util_random_with_topic)
@@ -32,8 +34,15 @@ from QUANTAXIS.QAUtil import (DATABASE, QA_util_log_info,
 
 
 class QA_Portfolio():
+    """QA_Portfolio
+    User-->Portfolio-->Account/Strategy
 
-    """
+    ::::::::::::::::::::::::::::::::::::::::::::::::::
+    ::        :: Portfolio 1 -- Account/Strategy 1  ::
+    ::  USER  ::             -- Account/Strategy 2  ::
+    ::        :: Portfolio 2 -- Account/Strategy 3  ::
+    ::::::::::::::::::::::::::::::::::::::::::::::::::
+
     QUANTAXIS 多账户
     以及组合管理
 
@@ -61,19 +70,27 @@ class QA_Portfolio():
 
     @2018/05/16
     fix 通过 cookie 获取 account
+
+    @royburns  1.根据指定的user_cookie创建user； 2.添加对应的测试代码； 3.添加注释
+    2018/05/18
+
+    @yutiansut
+    修改init_assets ==> init_cash ,删除cash,history在初始的输入
     """
 
-    def __init__(self, user_cookie=None, strategy_name=None, init_assets=1000000, cash=None, sell_available=None, history=None):
-        self.accounts = {}
-        self.portfolio_cookie = QA_util_random_with_topic('Portfolio')
+    def __init__(self, user_cookie=None, portfolio_cookie=None, strategy_name=None, init_cash=1000000, sell_available=None):
         self.user_cookie = user_cookie
+        # self.portfolio_cookie = QA_util_random_with_topic('Portfolio')
+        self.portfolio_cookie = QA_util_random_with_topic(
+            'Portfolio') if portfolio_cookie is None else portfolio_cookie
+        self.accounts = {}
         self.strategy_name = strategy_name
         # 和account一样的资产类
-        self.init_assets = 1000000 if init_assets is None else init_assets
-        self.cash = [self.init_assets] if cash is None else cash
+        self.init_cash = init_cash
+        self.cash = [self.init_cash]
         self.cash_available = self.cash[-1]  # 可用资金
         self.sell_available = sell_available
-        self.history = [] if history is None else history
+        self.history = []
         self.time_index = []
 
         for cookie in self.accounts.keys():
@@ -81,6 +98,14 @@ class QA_Portfolio():
 
     def __repr__(self):
         return '< QA_Portfolio {} with {} Accounts >'.format(self.portfolio_cookie, len(self.accounts.keys()))
+
+    @property
+    def init_hold_table(self):
+        return pd.concat([account.init_hold_with_account for account in list(self.accounts.values())])
+
+    @property
+    def init_hold(self):
+        return self.init_hold_table.groupby('code').sum()
 
     def get_portfolio(self):
         'return the accounts dict'
@@ -137,20 +162,8 @@ class QA_Portfolio():
         try:
             return self.accounts[account.account_cookie]
         except:
-            QA_util_log_info('Can not find this account with cookies %s'% account.account_cookie )
-            return None
-
-    def get_account_by_cookie(self, account_cookie):
-        '''
-        check the account whether in the protfolio dict or not
-        :param account:  QA_Account
-        :return: QA_Account if in dict
-                 None not in list
-        '''
-        try:
-            return self.accounts[account_cookie]
-        except:
-            QA_util_log_info('Can not find this account with cookies %s'% account_cookie)
+            QA_util_log_info(
+                'Can not find this account with cookies %s' % account.account_cookie)
             return None
 
     def cookie_mangement(self):
@@ -245,22 +258,26 @@ class QA_PortfolioView():
 
         ||Risk_analysis||Performace_analysis||
         """
+        self.account_cookie = QA_util_random_with_topic('PVIEW', 3)
         self.account_list = dict(
             zip([account.account_cookie for account in account_list], account_list))
         self.portfolio_cookie = QA_util_random_with_topic('Portfolio')
         self.user_cookie = None
-        # self._broker = None
-        # self.user_cookie = None
-        # self._market_type = None
-        # self._strategy_name = None
-        # self._currenttime = None
-        # self._init_assets = None
-        # self._cash = None
-        # self._history = None
-        # self._trade_index = None
+
+    def __repr__(self):
+        return '< QA_PortfolioVIEW {} with {} Accounts >'.format(self.account_cookie, len(self.accounts))
 
     @property
-    def account_cookie(self):
+    def contained_cookie(self):
+        """
+
+        CHANGED in 1.0.38
+        2018-05-23
+
+        portfolio-view 含有的account_cookie使用contained_cookie来承载
+
+        原先的account_cookie 使用 PVIEW_xxx 代替
+        """
         return [account.account_cookie for account in self.accounts]
 
     @property
@@ -283,8 +300,8 @@ class QA_PortfolioView():
         return pd.concat([pd.Series(account.code) for account in self.accounts]).drop_duplicates().tolist()
 
     @property
-    def init_assets(self):
-        return sum([account.init_assets for account in self.accounts])
+    def init_cash(self):
+        return sum([account.init_cash for account in self.accounts])
 
     @property
     def daily_cash(self):
@@ -296,4 +313,4 @@ class QA_PortfolioView():
 
     @property
     def daily_hold(self):
-        return pd.concat([account.daily_hold.set_index('date') for account in self.accounts]).groupby('date').sum()
+        return pd.concat([account.daily_hold.xs(account.account_cookie, level=1) for account in self.accounts]).groupby('date').sum()

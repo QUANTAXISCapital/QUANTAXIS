@@ -23,10 +23,12 @@
 # SOFTWARE.
 
 import codecs
+import io
 import os
+import re
 import sys
-
-import QUANTAXIS
+import webbrowser
+import platform
 
 try:
     from setuptools import setup
@@ -40,6 +42,20 @@ if sys.version_info.major != 3 or sys.version_info.minor not in [4, 5, 6]:
     print('wrong version, should be 3.4/3.5/3.6 version')
     sys.exit()
 
+with io.open('QUANTAXIS/__init__.py', 'rt', encoding='utf8') as f:
+    context = f.read()
+    VERSION = re.search(r'__version__ = \'(.*?)\'', context).group(1)
+    AUTHOR = re.search(r'__author__ = \'(.*?)\'', context).group(1)
+
+
+try:
+    if sys.platform in ['win32', 'darwin']:
+        print(webbrowser.open(
+            'https://github.com/QUANTAXIS/QUANTAXIS/blob/master/CHANGELOG.md'))
+        print('finish install')
+except:
+    pass
+
 
 def read(fname):
 
@@ -50,17 +66,18 @@ NAME = "quantaxis"
 """
 名字，一般放你包的名字即可
 """
-PACKAGES = ["QUANTAXIS", "QUANTAXIS.QAFetch", "QUANTAXIS.QACmd", "QUANTAXIS.QAMarket", 'QUANTAXIS.QAWeb',
-            "QUANTAXIS.QABacktest", "QUANTAXIS.QAEngine", "QUANTAXIS.QAData", 'QUANTAXIS.QAData.proto', "QUANTAXIS.QAAnalysis",
-            "QUANTAXIS.QASU", "QUANTAXIS.QAUtil", "QUANTAXIS.QAARP", "QUANTAXIS.QAIndicator"]
+PACKAGES = ["QUANTAXIS", "QUANTAXIS.QAFetch", "QUANTAXIS.QACmd", "QUANTAXIS.QAMarket", 'QUANTAXIS.QAWeb', 'QUANTAXIS.QATrade', 'QUANTAXIS.QASetting',
+            "QUANTAXIS.QABacktest", "QUANTAXIS.QAEngine", "QUANTAXIS.QAData", 'QUANTAXIS.QAData.proto', "QUANTAXIS.QAAnalysis", 'QUANTAXIS.QASelector',
+            "QUANTAXIS.QASU", "QUANTAXIS.QAUtil", "QUANTAXIS.QAARP", "QUANTAXIS.QAIndicator", "QUANTAXIS_CRAWLY"]
 """
 包含的包，可以多个，这是一个列表
 """
 
 DESCRIPTION = "QUANTAXIS:Quantitative Financial Strategy Framework"
 
+with open("README_ENG.md", "r") as fh:
+    LONG_DESCRIPTION = fh.read()
 
-LONG_DESCRIPTION = read("README.rst")
 """
 参见read方法说明
 """
@@ -70,12 +87,9 @@ KEYWORDS = ["quantaxis", "quant", "finance", "Backtest", 'Framework']
 关于当前包的一些关键字，方便PyPI进行分类。
 """
 
-AUTHOR = QUANTAXIS.__author__
 AUTHOR_EMAIL = "yutiansut@qq.com"
 
-URL = "http://www.yutiansut.com"
-
-VERSION = QUANTAXIS.__version__
+URL = "https://github.com/quantaxis/quantaxis"
 
 
 LICENSE = "MIT"
@@ -91,10 +105,10 @@ setup(
         'Intended Audience :: Developers',
         'Operating System :: OS Independent',
     ],
-    install_requires=['pandas>=0.20.3', 'numpy>=1.12.0', 'tushare', 'flask_socketio>=2.9.0 ', 'motor>=1.1',
-                      'lxml>=4.0', ' beautifulsoup4', 'flask-socketio', 'flask', 'matplotlib', 'requests',
-                      'pymongo>=3.4', 'six>=1.10.0', 'tabulate>=0.7.7', 'pytdx>=1.57', 'retrying>=1.3.3',
-                      'zenlog>=1.1', 'delegator.py>=0.0.12', 'flask>=0.12.2', 'pyecharts>=0.2.4', 'protobuf>=3.4.0'],
+    install_requires=['pandas>=0.23.0', 'numpy>=1.12.0', 'tushare', 'flask_socketio>=2.9.0 ', 'motor>=1.1', 'seaborn>=0.8.1',
+                      'lxml>=4.0', ' beautifulsoup4', 'flask-socketio', 'flask', 'matplotlib', 'requests', 'selenium', 'tornado',
+                      'pymongo>=3.7', 'six>=1.10.0', 'tabulate>=0.7.7', 'pytdx>=1.67', 'retrying>=1.3.3', 'scrapy', 'pyecharts-jupyter-installer',
+                      'zenlog>=1.1', 'delegator.py>=0.0.12', 'flask>=0.12.2', 'pyecharts==0.4.1', 'protobuf>=3.4.0'],
     entry_points={
         'console_scripts': [
             'quantaxis=QUANTAXIS.QACmd:QA_cmd',
@@ -110,7 +124,7 @@ setup(
     license=LICENSE,
     packages=PACKAGES,
     include_package_data=True,
-    zip_safe=True,
+    zip_safe=True
 )
 
 # 把上面的变量填入了一个setup()中即可。

@@ -26,6 +26,7 @@
 import QUANTAXIS as QA
 import random
 """
+单线程模式回测示例
 该代码旨在给出一个极其容易实现的小回测 高效 无事件驱动
 """
 B = QA.QA_BacktestBroker()
@@ -59,17 +60,19 @@ def simple_backtest(AC, code, start, end):
                     order=AC.send_order(
                         code=item.data.code[0], time=item.data.date[0], amount=1000, towards=QA.ORDER_DIRECTION.BUY, price=0, order_model=QA.ORDER_MODEL.MARKET, amount_model=QA.AMOUNT_MODEL.BY_AMOUNT
                     )
-                    AC.receive_deal(B.receive_order(QA.QA_Event(order=order,market_data=item)))
+                    if order:
+                        AC.receive_deal(B.receive_order(QA.QA_Event(order=order,market_data=item)))
 
                 else:
-                    AC.receive_deal(B.receive_order(QA.QA_Event(order=AC.send_order(
+                    order=AC.send_order(
                         code=item.data.code[0], time=item.data.date[0], amount=1000, towards=QA.ORDER_DIRECTION.SELL, price=0, order_model=QA.ORDER_MODEL.MARKET, amount_model=QA.AMOUNT_MODEL.BY_AMOUNT
-                    ),market_data=item)))
+                    )
+                    if order:
+                        AC.receive_deal(B.receive_order(QA.QA_Event(order=order,market_data=item)))
         AC.settle()
 
 
-simple_backtest(AC, QA.QA_fetch_stock_block_adv(
-).code[0:10], '2017-01-01', '2018-01-31')
+simple_backtest(AC, QA.QA_fetch_stock_block_adv().code[0:10], '2017-01-01', '2018-01-31')
 print(AC.message)
 AC.save()
 risk = QA.QA_Risk(AC)
