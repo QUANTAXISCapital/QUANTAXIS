@@ -22,7 +22,6 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-
 from abc import abstractmethod
 """QUANTAXIS EVENT
 EVENT 是会被推送进QUEUE的任务class
@@ -34,19 +33,19 @@ class QA_Worker(object):
         👻QA_Broker 继承这个类
         👻QA_Account 继承这个类
         👻QA_OrderHandler 继承这个类
-        这些类都要实现run方法✅，在其它线程🌀中允许自己的业务代码
+        这些类都要实现run方法，在其它线程🌀中允许自己的业务代码
     """
 
     def __init__(self):
         self.type = None
 
     def __repr__(self):
-        return '< QA_Worker {} id = {} >'.format(self.type,id(self))
+        return '< QA_Worker {} id = {} >'.format(self.type, id(self))
 
     @abstractmethod
     def run(self, event):
         '''
-        QA_Work是一个抽象类， 继承这个类，需要实现具体的run方法✅， 在其它线程🌀中执行
+        QA_Work是一个抽象类， 继承这个类，需要实现具体的run方法， 在其它线程🌀中执行
         :param event: QA_Event 类型
         :return: None
         '''
@@ -57,7 +56,16 @@ class QA_Event(object):
     '''
     QA_Event 事件
     '''
-    def __init__(self, event_type=None, func=None, message=None, callback=False, *args, **kwargs):
+
+    def __init__(
+            self,
+            event_type=None,
+            func=None,
+            message=None,
+            callback=False,
+            *args,
+            **kwargs
+    ):
         self.event_type = event_type
         self.func = func
         self.message = message
@@ -68,4 +76,9 @@ class QA_Event(object):
 
     #for debug purpose
     def __repr__(self):
-        return "< QA_Event {} {} {} , id = {} >".format(self.event_type , self.message, self.callback, id(self))
+        return "< QA_Event {} {} {} , id = {} >".format(
+            self.event_type,
+            self.message,
+            self.callback,
+            id(self)
+        )

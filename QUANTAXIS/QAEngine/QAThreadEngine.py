@@ -29,8 +29,6 @@ from queue import Queue
 
 from QUANTAXIS.QAEngine.QATask import QA_Task
 from QUANTAXIS.QAUtil import QA_util_log_info, QA_util_random_with_topic
-
-
 """标准化的QUANATAXIS事件分发,可以快速引入和复用
 每个事件需要携带一个方法,并且是需要立即被执行的时间才能使用这个事件方法"""
 
@@ -42,19 +40,27 @@ class QA_Thread(threading.Thread):
         QA_Engine 继承这个类。
     '''
 
-    def __init__(self, queue=None, name=None):
+    def __init__(self, queue=None, name=None, daemon=False):
         threading.Thread.__init__(self)
         self.queue = Queue() if queue is None else queue
         self.thread_stop = False
-        self.__flag = threading.Event()     # 用于暂停线程的标识
-        self.__flag.set()       # 设置为True
-        self.__running = threading.Event()      # 用于停止线程的标识
-        self.__running.set()      # 将running设置为True
-        self.name = QA_util_random_with_topic(topic='QA_Thread', lens=3) if name is None else name
+        self.__flag = threading.Event()        # 用于暂停线程的标识
+        self.__flag.set()                      # 设置为True
+        self.__running = threading.Event()     # 用于停止线程的标识
+        self.__running.set()                   # 将running设置为True
+        self.name = QA_util_random_with_topic(
+            topic='QA_Thread',
+            lens=3
+        ) if name is None else name
         self.idle = False
+        self.daemon = daemon
 
     def __repr__(self):
-        return '<QA_Thread{}  id={}>'.format(self.name, id(self))
+        return '<QA_Thread: {}  id={} ident {}>'.format(
+            self.name,
+            id(self),
+            self.ident
+        )
 
     def run(self):
         while self.__running.isSet():
@@ -63,13 +69,14 @@ class QA_Thread(threading.Thread):
                 '这是一个阻塞的队列,避免出现消息的遗漏'
                 try:
                     if self.queue.empty() is False:
-                        _task = self.queue.get()  # 接收消息
+                        _task = self.queue.get() # 接收消息
+                                                 #print(_task.worker, self.name)
                         assert isinstance(_task, QA_Task)
                         if _task.worker != None:
 
                             _task.do()
 
-                            self.queue.task_done()  # 完成一个任务
+                            self.queue.task_done() # 完成一个任务
                         else:
                             pass
                     else:
@@ -78,18 +85,21 @@ class QA_Thread(threading.Thread):
                         # Mac book下风扇狂转，如果sleep cpu 占用率回下降
                         # time.sleep(0.01)
                 except Exception as e:
-                    raise e
+                    if isinstance(e, ValueError):
+                        pass
+                    else:
+                        raise e
 
     def pause(self):
         self.__flag.clear()
 
     def resume(self):
-        self.__flag.set()    # 设置为True, 让线程停止阻塞
+        self.__flag.set() # 设置为True, 让线程停止阻塞
 
     def stop(self):
         # self.__flag.set()       # 将线程从暂停状态恢复, 如何已经暂停的话
         self.__running.clear()
-        self.thread_stop = True        # 设置为False
+        self.thread_stop = True # 设置为False
 
     def __start(self):
         self.queue.start()
@@ -101,10 +111,10 @@ class QA_Thread(threading.Thread):
         self.queue.put_nowait(task)
 
     def get(self, task):
-        return self.get(task)
+        return self.queue.get(task)
 
     def get_nowait(self, task):
-        return self.get_nowait(task)
+        return self.queue.get_nowait(task)
 
     def qsize(self):
         return self.queue.qsize()
@@ -120,24 +130,28 @@ class QA_Engine(QA_Thread):
 
         kernel 已更正(之前误写成kernal) @2018/05/28
     '''
+
     def __init__(self, queue=None, *args, **kwargs):
         super().__init__(queue=queue, name='QA_Engine')
         self.kernels_dict = {}
-        self.__flag = threading.Event()     # 用于暂停线程的标识
-        self.__flag.set()       # 设置为True
-        self.__running = threading.Event()      # 用于停止线程的标识
-        self.__running.set()      # 将running设置为True
+        self.__flag = threading.Event()    # 用于暂停线程的标识
+        self.__flag.set()                  # 设置为True
+        self.__running = threading.Event() # 用于停止线程的标识
+        self.__running.set()               # 将running设置为True
 
     def __repr__(self):
-        return ' <QA_ENGINE with {} kernels>'.format(list(self.kernels_dict.keys()))
+        return ' <QA_ENGINE with {} kernels ident {}>'.format(
+            list(self.kernels_dict.keys()),
+            self.ident
+        )
 
     @property
     def kernel_num(self):
         return len(self.kernels_dict.keys())
 
-    def create_kernel(self, name):
+    def create_kernel(self, name, daemon=False):
         # ENGINE线程创建一个事件线程
-        self.kernels_dict[name] = QA_Thread(name=name)
+        self.kernels_dict[name] = QA_Thread(name=name, daemon=daemon)
 
     def register_kernel(self, name, kernel):
         if name not in self.kernels_dict.keys():
@@ -161,7 +175,6 @@ class QA_Engine(QA_Thread):
 
         self.kernels_dict[task.engine].put(task)
 
-
     def stop_all(self):
         for item in self.kernels_dict.values():
             item.stop()
@@ -176,7 +189,7 @@ class QA_Engine(QA_Thread):
         self.__flag.clear()
 
     def resume(self):
-        self.__flag.set()    # 设置为True, 让线程停止阻塞
+        self.__flag.set() # 设置为True, 让线程停止阻塞
 
     def run(self):
         while self.__running.isSet():
@@ -185,14 +198,13 @@ class QA_Engine(QA_Thread):
                 '这是一个阻塞的队列,避免出现消息的遗漏'
                 try:
                     if self.queue.empty() is False:
-                        _task = self.queue.get()  # 接收消息
-                        #print("queue left %d"%self.queue.qsize())
+                        _task = self.queue.get() # 接收消息
+                                                 #print("queue left %d"%self.queue.qsize())
                         assert isinstance(_task, QA_Task)
-                        #print(_task)
-
+                                                 # print(_task)
 
                         # 🛠todo 建议把 engine 变量名字 改成  engine_in_kernels_dict_name, 便于理解
-                        if _task.engine is None:  # _task.engine 是字符串，对于的是 kernels_dict 中的 线程对象
+                        if _task.engine is None: # _task.engine 是字符串，对于的是 kernels_dict 中的 线程对象
 
                             # 如果不指定线程 就在ENGINE线程中运行
                             _task.do()
@@ -204,11 +216,14 @@ class QA_Engine(QA_Thread):
                     else:
                         self.idle = True
 
-                    #Mac book下风扇狂转，如果sleep cpu 占用率回下降
-                    #time.sleep(0.01)
+                    # Mac book下风扇狂转，如果sleep cpu 占用率回下降
+                    # time.sleep(0.01)
 
                 except Exception as e:
-                    raise e
+                    if isinstance(e, ValueError):
+                        pass
+                    else:
+                        raise e
                     # self.run()
 
     def clear(self):
@@ -219,17 +234,23 @@ class QA_Engine(QA_Thread):
             if not item.idle:
                 res = False
 
-            item.queue.join()
+            #item.queue.join()
         if not self.queue.empty():
             res = False
 
         return res
 
     def join(self):
+        print(self.kernels_dict)
+        
         for item in self.kernels_dict.values():
+            print(item)
+            print(item.queue.qsize())
             item.queue.join()
         self.queue.join()
 
+    def join_single(self, kernel):
+        self.kernels_dict[kernel].queue.join()
 
 if __name__ == '__main__':
     import queue

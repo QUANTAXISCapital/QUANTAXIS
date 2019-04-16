@@ -46,9 +46,7 @@ from pyecharts import Kline
 
 from QUANTAXIS.QAData.base_datastruct import _quotation_base
 from QUANTAXIS.QAData.data_fq import QA_data_stock_to_fq
-from QUANTAXIS.QAData.data_resample import QA_data_tick_resample
-from QUANTAXIS.QAData.proto import stock_day_pb2  # protobuf import
-from QUANTAXIS.QAData.proto import stock_min_pb2
+from QUANTAXIS.QAData.data_resample import QA_data_tick_resample, QA_data_day_resample, QA_data_min_resample
 from QUANTAXIS.QAIndicator import EMA, HHV, LLV, SMA
 from QUANTAXIS.QAUtil import (DATABASE, QA_util_log_info,
                               QA_util_random_with_topic,
@@ -74,7 +72,7 @@ class QA_DataStruct_Stock_day(_quotation_base):
         super().__init__(init_data_by_df, dtype, if_fq)
 
         if isinstance(init_data_by_df, pd.DataFrame) == False:
-            print("💢Error init_data_by_df is not kind of DataFrame type !")
+            print("QAError init_data_by_df is not kind of DataFrame type !")
 
     # 抽象类继承
 
@@ -134,13 +132,13 @@ class QA_DataStruct_Stock_day(_quotation_base):
     @lru_cache()
     def next_day_low_limit(self):
         "明日跌停价"
-        return round((self.data.close + 0.0002) * 1.1, 2)
+        return self.groupby(level=1).close.apply(lambda x: round((x + 0.0002)*0.9, 2)).sort_index()
 
     @property
     @lru_cache()
     def next_day_high_limit(self):
         "明日涨停价"
-        return round((self.data.close + 0.0002) * 0.9, 2)
+        return self.groupby(level=1).close.apply(lambda x: round((x + 0.0002)*1.1, 2)).sort_index()
 
     @property
     def preclose(self):
@@ -149,11 +147,45 @@ class QA_DataStruct_Stock_day(_quotation_base):
         except:
             return None
 
+    pre_close = preclose
+
     @property
     def price_chg(self):
         try:
             return (self.close-self.preclose)/self.preclose
         except:
+            return None
+
+    @property
+    @lru_cache()
+    def week(self):
+        return self.resample('w')
+
+    @property
+    @lru_cache()
+    def month(self):
+        return self.resample('M')
+
+    @property
+    @lru_cache()
+    def quarter(self):
+        return self.resample('Q')
+
+    # @property
+    # @lru_cache()
+    # def semiannual(self):
+    #     return self.resample('SA')
+
+    @property
+    @lru_cache()
+    def year(self):
+        return self.resample('Y')
+
+    def resample(self, level):
+        try:
+            return self.add_func(QA_data_day_resample, level).sort_index()
+        except Exception as e:
+            print('QA ERROR : FAIL TO RESAMPLE {}'.format(e))
             return None
 
 
@@ -163,22 +195,18 @@ class QA_DataStruct_Stock_min(_quotation_base):
 
         try:
             if 'preclose' in DataFrame.columns:
-                self.data = DataFrame.ix[:, [
-                    'code', 'open', 'high', 'low', 'close', 'volume', 'preclose', 'datetime', 'date']]
+                self.data = DataFrame.loc[:, [
+                    'open', 'high', 'low', 'close', 'volume', 'amount', 'preclose', 'type']]
             else:
-                self.data = DataFrame.ix[:, [
-                    'code', 'open', 'high', 'low', 'close', 'volume', 'datetime', 'date']]
+                self.data = DataFrame.loc[:, [
+                    'open', 'high', 'low', 'close', 'volume', 'amount', 'type']]
         except Exception as e:
             raise e
 
-        if 'high_limit' not in self.data.columns:
-            self.data['high_limit'] = round(
-                (self.data.close.shift(1) + 0.0002) * 1.1, 2)
-        if 'low_limit' not in self.data.columns:
-            self.data['low_limit'] = round(
-                (self.data.close.shift(1) + 0.0002) * 0.9, 2)
         self.type = dtype
         self.if_fq = if_fq
+
+        self.data = self.data.sort_index()
 
     # 抽象类继承
     def choose_db(self):
@@ -224,22 +252,51 @@ class QA_DataStruct_Stock_min(_quotation_base):
                 'none support type for qfq Current type is:%s' % self.if_fq)
             return self
 
-    @property
-    def high_limit(self):
-        '涨停价'
-        return self.data.high_limit
+    # @property
+    # def high_limit(self):
+    #     '涨停价'
+    #     return self.data.high_limit
+
+    # @property
+    # def low_limit(self):
+    #     '跌停价'
+    #     return self.data.low_limit
+
+    def resample(self, level):
+        try:
+            return self.add_func(QA_data_min_resample, level).sort_index()
+        except Exception as e:
+            print('QA ERROR : FAIL TO RESAMPLE {}'.format(e))
+            return None
 
     @property
-    def low_limit(self):
-        '跌停价'
-        return self.data.low_limit
+    @lru_cache()
+    def min5(self):
+        return self.resample('5min')
+
+    @property
+    @lru_cache()
+    def min15(self):
+        return self.resample('15min')
+
+    @property
+    @lru_cache()
+    def min30(self):
+        return self.resample('30min')
+
+    @property
+    @lru_cache()
+    def min60(self):
+        return self.resample('60min')
 
 
 class QA_DataStruct_Future_day(_quotation_base):
     def __init__(self, DataFrame, dtype='future_day', if_fq=''):
+        super().__init__(DataFrame, dtype, if_fq)
         self.type = 'future_day'
-        self.data = DataFrame.ix[:, [
-            'code', 'open', 'high', 'low', 'close', 'trade', 'position', 'datetime', 'date']]
+        self.data = self.data.loc[:, [
+            'open', 'high', 'low', 'close', 'volume', 'position', 'price']]
+        self.if_fq = if_fq
 
     # 抽象类继承
     def choose_db(self):
@@ -249,6 +306,65 @@ class QA_DataStruct_Future_day(_quotation_base):
         return '< QA_DataStruct_Future_day with {} securities >'.format(len(self.code))
     __str__ = __repr__
 
+    @property
+    @lru_cache()
+    def week(self):
+        return self.resample('w')
+
+    @property
+    @lru_cache()
+    def month(self):
+        return self.resample('M')
+
+    @property
+    @lru_cache()
+    def quarter(self):
+        return self.resample('Q')
+
+    @property
+    @lru_cache()
+    def tradedate(self):
+        """返回交易所日历下的日期
+
+        Returns:
+            [type] -- [description]
+        """
+
+        try:
+            return self.date
+        except:
+            return None
+
+    @property
+    @lru_cache()
+    def tradetime(self):
+        """返回交易所日历下的日期
+
+        Returns:
+            [type] -- [description]
+        """
+
+        try:
+            return self.date
+        except:
+            return None
+    # @property
+    # @lru_cache()
+    # def semiannual(self):
+    #     return self.resample('SA')
+
+    @property
+    @lru_cache()
+    def year(self):
+        return self.resample('Y')
+
+    def resample(self, level):
+        try:
+            return self.add_func(QA_data_day_resample, level).sort_index()
+        except Exception as e:
+            print('QA ERROR : FAIL TO RESAMPLE {}'.format(e))
+            return None
+
 
 class QA_DataStruct_Future_min(_quotation_base):
     """
@@ -257,24 +373,82 @@ class QA_DataStruct_Future_min(_quotation_base):
 
     def __init__(self, DataFrame, dtype='future_min', if_fq=''):
         # 🛠todo  期货分钟数据线的维护， 暂时用日线代替分钟线
-        self.type = 'future_day'
-        self.data = DataFrame.ix[:, [
-            'code', 'open', 'high', 'low', 'close', 'trade', 'position', 'datetime', 'date']]
+        super().__init__(DataFrame, dtype, if_fq)
+        self.type = dtype
+        self.data = self.data.loc[:, [
+            'open', 'high', 'low', 'close', 'volume', 'position', 'price', 'tradetime', 'type']]
+        self.if_fq = if_fq
 
     # 抽象类继承
     def choose_db(self):
         self.mongo_coll = DATABASE.future_min
 
+    @property
+    @lru_cache()
+    def tradedate(self):
+        """返回交易所日历下的日期
+
+        Returns:
+            [type] -- [description]
+        """
+
+        try:
+            return self.data.tradetime.apply(lambda x: x[0:10])
+        except:
+            return None
+
+    @property
+    @lru_cache()
+    def tradetime(self):
+        """返回交易所日历下的日期
+
+        Returns:
+            [type] -- [description]
+        """
+
+        try:
+            return self.data.tradetime
+        except:
+            return None
+
+    @property
+    @lru_cache()
+    def min5(self):
+        return self.resample('5min')
+
+    @property
+    @lru_cache()
+    def min15(self):
+        return self.resample('15min')
+
+    @property
+    @lru_cache()
+    def min30(self):
+        return self.resample('30min')
+
+    @property
+    @lru_cache()
+    def min60(self):
+        return self.resample('60min')
+
     def __repr__(self):
         return '< QA_DataStruct_Future_min with {} securities >'.format(len(self.code))
     __str__ = __repr__
+
+    def resample(self, level):
+        try:
+            return self.add_func(QA_data_min_resample, level).sort_index()
+        except Exception as e:
+            print('QA ERROR : FAIL TO RESAMPLE {}'.format(e))
+            return None
 
 
 class QA_DataStruct_Index_day(_quotation_base):
     '自定义的日线数据结构'
 
     def __init__(self, DataFrame, dtype='index_day', if_fq=''):
-        self.data = DataFrame
+        super().__init__(DataFrame, dtype, if_fq)
+        # self.data = DataFrame
         self.type = dtype
         self.if_fq = if_fq
         # self.mongo_coll = eval(
@@ -295,16 +469,49 @@ class QA_DataStruct_Index_day(_quotation_base):
         return '< QA_DataStruct_Index_day with {} securities >'.format(len(self.code))
     __str__ = __repr__
 
+    @property
+    @lru_cache()
+    def week(self):
+        return self.resample('w')
+
+    @property
+    @lru_cache()
+    def month(self):
+        return self.resample('M')
+
+    @property
+    @lru_cache()
+    def quarter(self):
+        return self.resample('Q')
+
+    # @property
+    # @lru_cache()
+    # def semiannual(self):
+    #     return self.resample('SA')
+
+    @property
+    @lru_cache()
+    def year(self):
+        return self.resample('Y')
+
+    def resample(self, level):
+        try:
+            return self.add_func(QA_data_day_resample, level).sort_index()
+        except Exception as e:
+            print('QA ERROR : FAIL TO RESAMPLE {}'.format(e))
+            return None
+
 
 class QA_DataStruct_Index_min(_quotation_base):
     '自定义的分钟线数据结构'
 
     def __init__(self, DataFrame, dtype='index_min', if_fq=''):
+        super().__init__(DataFrame, dtype, if_fq)
         self.type = dtype
         self.if_fq = if_fq
-        self.data = DataFrame.ix[:, [
-            'code', 'open', 'high', 'low', 'close', 'volume', 'datetime', 'date']]
-        #self.mongo_coll = DATABASE.index_min
+        self.data = self.data.loc[:, [
+            'open', 'high', 'low', 'close', 'up_count', 'down_count', 'volume', 'amount', 'type']]
+        # self.mongo_coll = DATABASE.index_min
 
     # 抽象类继承
     def choose_db(self):
@@ -312,6 +519,33 @@ class QA_DataStruct_Index_min(_quotation_base):
 
     def __repr__(self):
         return '< QA_DataStruct_Index_Min with %s securities >' % len(self.code)
+
+    @property
+    @lru_cache()
+    def min5(self):
+        return self.resample('5min')
+
+    @property
+    @lru_cache()
+    def min15(self):
+        return self.resample('15min')
+
+    @property
+    @lru_cache()
+    def min30(self):
+        return self.resample('30min')
+
+    @property
+    @lru_cache()
+    def min60(self):
+        return self.resample('60min')
+
+    def resample(self, level):
+        try:
+            return self.add_func(QA_data_min_resample, level).sort_index()
+        except Exception as e:
+            print('QA ERROR : FAIL TO RESAMPLE {}'.format(e))
+            return None
 
     __str__ = __repr__
 
@@ -404,7 +638,7 @@ class QA_DataStruct_Stock_transaction():
             lru_cache
 
         Returns:
-            pd.Series -- till minute level 
+            pd.Series -- till minute level
         """
 
         return self.data.time
@@ -531,7 +765,7 @@ class QA_DataStruct_Stock_transaction():
         return self.data.query('amount>={}'.format(bigamount))
 
     def get_medium_order(self, lower=200000, higher=1000000):
-        """return medium 
+        """return medium
 
         Keyword Arguments:
             lower {[type]} -- [description] (default: {200000})
@@ -562,6 +796,27 @@ class QA_DataStruct_Stock_transaction():
             return self.data.loc[start:end]
 
 
+class QA_DataStruct_Day(_quotation_base):
+    """这个类是个通用类 一般不使用  特定生成的时候可能会用到 只具备基类方法
+
+    Arguments:
+        _quotation_base {[type]} -- [description]
+    """
+
+    def __init__(self, data, dtype='unknown_day', if_fq='bfq'):
+        '''
+        '''
+        super().__init__(data, dtype, if_fq)
+
+
+class QA_DataStruct_Min(_quotation_base):
+    '''这个类是个通用类 一般不使用  特定生成的时候可能会用到 只具备基类方法
+    '''
+
+    def __init__(self, data, dtype='unknown_min', if_fq='bfq'):
+        super().__init__(data, dtype, if_fq)
+
+
 class _realtime_base():
     """
     realtime 基类
@@ -584,175 +839,169 @@ class _realtime_base():
         """
 
         if isinstance(market_data, dict):
-            self.market_data = market_data
+            self.data = market_data
         elif isinstance(market_data, pd.DataFrame):
-            self.market_data = QA_util_to_json_from_pandas(market_data)
+            self.data = QA_util_to_json_from_pandas(market_data)
 
     @property
     def open(self):
-        return self.market_data.get('open', None)
+        return self.data.get('open', None)
 
     @property
     def price(self):
-        return self.market_data.get('price', None)
+        return self.data.get('price', None)
 
     @property
     def datetime(self):
-        return self.market_data.get('datetime', None)
+        return self.data.get('datetime', None)
 
     @property
     def high(self):
-        return self.market_data.get('high', None)
+        return self.data.get('high', None)
 
     @property
     def low(self):
-        return self.market_data.get('low', None)
+        return self.data.get('low', None)
 
     @property
     def code(self):
-        return self.market_data.get('code', None)
+        return self.data.get('code', None)
 
     @property
     def last_close(self):
-        return self.market_data.get('last_close', None)
+        return self.data.get('last_close', None)
 
     @property
     def cur_vol(self):
-        return self.market_data.get('cur_vol', None)
+        return self.data.get('cur_vol', None)
 
     @property
     def bid1(self):
-        return self.market_data.get('bid1', None)
+        return self.data.get('bid1', None)
 
     @property
     def bid_vol1(self):
-        return self.market_data.get('bid_vol1', None)
+        return self.data.get('bid_vol1', None)
 
     @property
     def bid2(self):
-        return self.market_data.get('bid2', None)
+        return self.data.get('bid2', None)
 
     @property
     def bid_vol2(self):
-        return self.market_data.get('bid_vol2', None)
+        return self.data.get('bid_vol2', None)
 
     @property
     def bid3(self):
-        return self.market_data.get('bid3', None)
+        return self.data.get('bid3', None)
 
     @property
     def bid_vol3(self):
-        return self.market_data.get('bid_vol3', None)
+        return self.data.get('bid_vol3', None)
 
     @property
     def bid4(self):
-        return self.market_data.get('bid4', None)
+        return self.data.get('bid4', None)
 
     @property
     def bid_vol4(self):
-        return self.market_data.get('bid_vol4', None)
+        return self.data.get('bid_vol4', None)
 
     @property
     def bid5(self):
-        return self.market_data.get('bid5', None)
+        return self.data.get('bid5', None)
 
     @property
     def bid_vol5(self):
-        return self.market_data.get('bid_vol5', None)
+        return self.data.get('bid_vol5', None)
 
     @property
     def ask1(self):
-        return self.market_data.get('ask1', None)
+        return self.data.get('ask1', None)
 
     @property
     def ask_vol1(self):
-        return self.market_data.get('ask_vol1', None)
+        return self.data.get('ask_vol1', None)
 
     @property
     def ask2(self):
-        return self.market_data.get('ask2', None)
+        return self.data.get('ask2', None)
 
     @property
     def ask_vol2(self):
-        return self.market_data.get('ask_vol2', None)
+        return self.data.get('ask_vol2', None)
 
     @property
     def ask3(self):
-        return self.market_data.get('ask3', None)
+        return self.data.get('ask3', None)
 
     @property
     def ask_vol3(self):
-        return self.market_data.get('ask_vol3', None)
+        return self.data.get('ask_vol3', None)
 
     @property
     def ask4(self):
-        return self.market_data.get('ask4', None)
+        return self.data.get('ask4', None)
 
     @property
     def ask_vol4(self):
-        return self.market_data.get('ask_vol4', None)
+        return self.data.get('ask_vol4', None)
 
     @property
     def ask5(self):
-        return self.market_data.get('ask5', None)
+        return self.data.get('ask5', None)
 
     @property
     def ask_vol5(self):
-        return self.market_data.get('ask_vol5', None)
+        return self.data.get('ask_vol5', None)
 
 
 class QA_DataStruct_Stock_realtime(_realtime_base):
-    def __init__(self, market_data):
-        if isinstance(market_data, dict):
-            self.market_data = market_data
-        elif isinstance(market_data, pd.DataFrame):
-            self.market_data = QA_util_to_json_from_pandas(market_data)
+    def __init__(self, data):
+        self.data = data
+        self.index = data.index
 
     def __repr__(self):
-        return '< QA_REALTIME_STRUCT {}{} >'.format(self.code, self.datetime)
+        return '< QA_REALTIME_STRUCT >'
 
     # @property
     # def ask_list(self):
-    #     return self.market_data.ix[:, ['ask1', 'ask_vol1', 'bid1', 'bid_vol1', 'ask2', 'ask_vol2',
+    #     return self.data.loc[:, ['ask1', 'ask_vol1', 'bid1', 'bid_vol1', 'ask2', 'ask_vol2',
     #                                    'bid2', 'bid_vol2', 'ask3', 'ask_vol3', 'bid3', 'bid_vol3', 'ask4',
     #                                    'ask_vol4', 'bid4', 'bid_vol4', 'ask5', 'ask_vol5', 'bid5', 'bid_vol5']]
 
     # @property
     # def bid_list(self):
-    #     return self.market_data.ix[:, ['bid1', 'bid_vol1', 'bid2', 'bid_vol2',  'bid3', 'bid_vol3', 'bid4', 'bid_vol4', 'bid5', 'bid_vol5']]
+    #     return self.data.loc[:, ['bid1', 'bid_vol1', 'bid2', 'bid_vol2',  'bid3', 'bid_vol3', 'bid4', 'bid_vol4', 'bid5', 'bid_vol5']]
 
     @property
     def _data(self):
         """
         return a dataframe-type result
         """
-        return pd.DataFrame(self.market_data)
+        return pd.DataFrame(self.data)
 
     @property
-    def ab_board(self):
-        """ask_bid board
-        bid3 bid_vol3
-        bid2 bid_vol2
-        bid1 bid_vol1
-        ===============
-        price /cur_vol
-        ===============
-        ask1 ask_vol1
-        ask2 ask_vol2
-        ask3 ask_vol3
-        """
-        return 'BID5 {}  {} \nBID4 {}  {} \nBID3 {}  {} \nBID2 {}  {} \nBID1 {}  {} \n============\nCURRENT {}  {} \n============\
-        \nASK1 {}  {} \nASK2 {}  {} \nASK3 {}  {} \nASK4 {}  {} \nASK5 {}  {} \nTIME {}  CODE {} '.format(
-            self.bid5, self.bid_vol5, self.bid4, self.bid_vol4, self.bid3, self.bid_vol3, self.bid2, self.bid_vol2, self.bid1, self.bid_vol1,
-            self.price, self.cur_vol,
-            self.ask1, self.ask_vol1, self.ask2, self.ask_vol2, self.ask3, self.ask_vol3, self.ask4, self.ask_vol4, self.ask5, self.ask_vol5,
-            self.datetime, self.code
-        )
+    def datetime(self):
+        return self.index.levels[0]
+
+    @property
+    def code(self):
+        return self.index.levels[1]
 
     def serialize(self):
         """to_protobuf
         """
         pass
+
+    def to_json(self):
+        return self.data.assign(code=self.code, datetime=str(self.datetime)).to_dict(orient='records')
+
+    def resample(self, level):
+        return QA_data_tick_resample(self.data, level)
+
+
+QA_DataStruct_Future_realtime = QA_DataStruct_Stock_realtime
 
 
 class QA_DataStruct_Stock_realtime_series():
@@ -787,3 +1036,64 @@ class QA_DataStruct_Security_list():
 
     def get_etf(self):
         return self.data
+
+
+class QA_DataStruct_Future_tick():
+    """
+    CTP FORMAT
+    {'TradingDay': '20181115',
+    'InstrumentID': 'rb1901',
+    'ExchangeID': '',
+    'ExchangeInstID': '',
+    'LastPrice': 3874.0,
+    'PreSettlementPrice': 3897.0,
+    'PreClosePrice': 3937.0,
+    'PreOpenInterest': 2429820.0,
+    'OpenPrice': 3941.0,
+    'HighestPrice': 3946.0,
+    'LowestPrice': 3865.0,
+    'Volume': 2286142,
+    'Turnover': 89450228460.0,
+    'OpenInterest': 2482106.0,
+    'ClosePrice': 1.7976931348623157e+308,
+    'SettlementPrice': 1.7976931348623157e+308,
+    'UpperLimitPrice': 4169.0,
+    'LowerLimitPrice': 3624.0,
+    'PreDelta': 0.0,
+    'CurrDelta': 1.7976931348623157e+308,
+    'BidPrice1': 3873.0,
+    'BidVolume1': 292,
+    'AskPrice1': 3874.0,
+    'AskVolume1': 223,
+    'BidPrice2': 1.7976931348623157e+308,
+    'BidVolume2': 0,
+    'AskPrice2': 1.7976931348623157e+308,
+    'AskVolume2': 0,
+    'BidPrice3': 1.7976931348623157e+308,
+    'BidVolume3': 0,
+    'AskPrice3': 1.7976931348623157e+308,
+    'AskVolume3': 0,
+    'BidPrice4': 1.7976931348623157e+308,
+    'BidVolume4': 0,
+    'AskPrice4': 1.7976931348623157e+308,
+    'AskVolume4': 0,
+    'BidPrice5': 1.7976931348623157e+308,
+    'BidVolume5': 0,
+    'AskPrice5': 1.7976931348623157e+308,
+    'AskVolume5': 0,
+    'AveragePrice': 39127.15328269198,
+    'ActionDay': '20181115'
+    'UpdateTime': '11:30:01',
+    'UpdateMillisec': 0,}
+
+    replace(1.7976931348623157e+308, np.nan)
+    """
+
+    def __init__(self, data={}):
+        self.data = data
+
+    def trading_day(self, ):
+        pass
+
+    def append(self, new_data):
+        pass
